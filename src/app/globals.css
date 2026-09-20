@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #07080f;
+  --glass: rgba(255,255,255,0.04);
+  --glass-border: rgba(255,255,255,0.10);
+  --blue: #3b82f6;
+  --orange: #f97316;
+  --cyan: #06b6d4;
+  --purple: #a855f7;
+  --yellow: #eab308;
+  --green: #22c55e;
+  --emerald: #10b981;
+  --red: #ef4444;
+}
+
+* { box-sizing: border-box; }
+
+html, body { 
+  height: 100%; 
+  margin: 0;
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: white;
+  overflow: hidden;
+  transition: background 0.5s ease, color 0.5s ease;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 4px; }
+
+/* ─── Glass (dark mode) ─── */
+.glass {
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+/* ─── Animated gradient text ─── */
+.gradient-text {
+  background: linear-gradient(135deg, #3b82f6, #a855f7, #06b6d4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Grid background ─── */
+.grid-bg {
+  background-image: 
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ─── Light mode grid ─── */
+.grid-bg-light {
+  background-image: 
+    linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ─── Glow effects ─── */
+.glow-blue { box-shadow: 0 0 30px rgba(59,130,246,0.3); }
+.glow-emerald { box-shadow: 0 0 30px rgba(16,185,129,0.3); }
+.glow-orange { box-shadow: 0 0 30px rgba(249,115,22,0.3); }
+.glow-purple { box-shadow: 0 0 30px rgba(168,85,247,0.3); }
+.glow-cyan { box-shadow: 0 0 30px rgba(6,182,212,0.3); }
+
+/* ─── Keyframes ─── */
+@keyframes float-up {
+  0% { transform: translateY(0) translateX(0); opacity: 1; }
+  100% { transform: translateY(-60px) translateX(var(--dx,10px)); opacity: 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+@keyframes scan-line {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes data-flow {
+  0% { stroke-dashoffset: 1000; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
