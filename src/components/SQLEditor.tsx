@@ -16,14 +16,43 @@ const EXAMPLES = [
   { label: '🛒 Products', query: 'SELECT name, category, price\nFROM products\nWHERE price > 200\nORDER BY price;' },
 ];
 
-function parseTableName(query: string): string {
-  const m = query.match(/FROM\s+[`"']?([\w]+)[`"']?/i);
-  return m ? m[1].toLowerCase() : 'students';
+function parseCSVLine(line: string): string[] {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  values.push(current.trim());
+  return values;
 }
+
+function parseTableName(query: string, availableTables: string[]): string {
+  const m = query.match(/FROM\s+[`"']?([a-zA-Z0-9_]+)[`"']?/i);
+  if (!m) return availableTables[0] || 'students';
+  const raw = m[1].toLowerCase();
+  const exact = availableTables.find(t => t.toLowerCase() === raw);
+  return exact || raw;
+}
+
 function parseWhere(query: string): string | null {
-  const m = query.match(/WHERE\s+([\s\S]+?)(?:\s+ORDER|\s+GROUP|\s+LIMIT|;|$)/i);
+  const m = query.match(/WHERE\s+([\s\S]+?)(?:\s+GROUP\s+BY|\s+HAVING|\s+ORDER\s+BY|\s+LIMIT|;|$)/i);
   return m ? m[1].trim() : null;
 }
+
 function parseSelect(query: string): string[] {
   const m = query.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
   if (!m) return [];
@@ -31,20 +60,26 @@ function parseSelect(query: string): string[] {
   if (raw === '*') return [];
   return raw.split(',').map(c => c.trim().replace(/.*\s+as\s+/i, '').replace(/[()]/g, '').trim());
 }
+
 function parseGroupBy(query: string): string | null {
-  const m = query.match(/GROUP\s+BY\s+(\w+)/i);
+  const m = query.match(/GROUP\s+BY\s+([a-zA-Z0-9_]+)/i);
   return m ? m[1] : null;
 }
-function parseOrderBy(query: string): string | null {
-  const m = query.match(/ORDER\s+BY\s+(\w+)/i);
-  return m ? m[1] : null;
+
+function parseOrderBy(query: string): { column: string; direction: 'ASC' | 'DESC' } | null {
+  const m = query.match(/ORDER\s+BY\s+([a-zA-Z0-9_]+)(?:\s+(ASC|DESC))?/i);
+  if (!m) return null;
+  return {
+    column: m[1],
+    direction: (m[2]?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC') as 'ASC' | 'DESC'
+  };
 }
 
 export function SQLEditor() {
   const { 
     query, setQuery, runQuery, status, tables, setStatus, setResult, setSteps, setCurrentStep,
     currentStep, steps, nextStep, prevStep, setRowStates, setHighlightColumns, setFilterExpr,
-    setSortedRows, setGroupData, setActiveTable, reset, addTable, isLightMode
+    setStepMetadata, setSortedRows, setGroupData, setActiveTable, reset, addTable, isLightMode
   } = useSQLStore();
 
   const [dbReady, setDbReady] = useState(false);
@@ -61,22 +96,30 @@ export function SQLEditor() {
     runQuery();
 
     const q = query.trim();
-    const tableName = parseTableName(q);
+    const available = Object.keys(tables);
+    const tableName = parseTableName(q, available);
     const filterExpr = parseWhere(q);
     const selectedCols = parseSelect(q);
     const groupByCol = parseGroupBy(q);
-    const orderByCol = parseOrderBy(q);
+    const orderByParsed = parseOrderBy(q);
     
-    const srcRows = tables[tableName] || tables['students'] || [];
+    const srcRows = tables[tableName] || tables[available[0]] || [];
     const allCols = srcRows.length > 0 ? Object.keys(srcRows[0]) : [];
 
     setActiveTable(tableName);
+
+    // Find the column referenced in the WHERE condition
+    let filterCol: string | null = null;
+    if (filterExpr) {
+      const match = allCols.find(c => new RegExp(`\\b${c}\\b`, 'i').test(filterExpr));
+      filterCol = match || null;
+    }
 
     const newSteps: VisualizationStep[] = [];
     
     newSteps.push({
       id: 'step-from', phase: 'scanning', title: 'SCAN TABLE', sqlKeyword: 'FROM',
-      description: `The database locates the "${tableName}" table and reads all its rows into memory.`,
+      description: `The database locates the "${tableName}" table and reads all ${srcRows.length} rows into working memory.`,
       concept: 'FROM defines the source dataset for the query.',
       color: '#3b82f6', icon: 'Database'
     });
@@ -84,7 +127,7 @@ export function SQLEditor() {
     if (filterExpr) {
       newSteps.push({
         id: 'step-where', phase: 'filtering', title: 'FILTER ROWS', sqlKeyword: 'WHERE',
-        description: `Each row is evaluated against: ${filterExpr}. Rows returning FALSE are removed.`,
+        description: `Each row is evaluated against: ${filterExpr}. Rows returning FALSE are discarded.`,
         concept: 'WHERE filters rows before any grouping or selecting.',
         color: '#f97316', icon: 'Filter'
       });
@@ -93,16 +136,16 @@ export function SQLEditor() {
     if (groupByCol) {
       newSteps.push({
         id: 'step-group', phase: 'grouping', title: 'GROUP DATA', sqlKeyword: 'GROUP BY',
-        description: `Rows with identical "${groupByCol}" values are grouped into buckets.`,
+        description: `Rows with identical "${groupByCol}" values are grouped into aggregated buckets.`,
         concept: 'GROUP BY collapses rows sharing a key into summaries.',
         color: '#06b6d4', icon: 'Layers'
       });
     }
 
-    if (orderByCol) {
+    if (orderByParsed) {
       newSteps.push({
         id: 'step-order', phase: 'ordering', title: 'SORT ROWS', sqlKeyword: 'ORDER BY',
-        description: `Rows are sorted by the "${orderByCol}" column.`,
+        description: `Rows are sorted by "${orderByParsed.column}" in ${orderByParsed.direction} order.`,
         concept: 'ORDER BY determines the final row sequence.',
         color: '#eab308', icon: 'ArrowUpDown'
       });
@@ -111,30 +154,61 @@ export function SQLEditor() {
     const finalCols = selectedCols.length > 0 ? selectedCols : allCols;
     newSteps.push({
       id: 'step-select', phase: 'projecting', title: 'SELECT COLUMNS', sqlKeyword: 'SELECT',
-      description: `Only columns (${finalCols.join(', ')}) are extracted for the final result.`,
-      concept: 'SELECT (projection) runs logically last — it picks which columns to return.',
+      description: selectedCols.length > 0 
+        ? `Columns (${finalCols.join(', ')}) are extracted. Unselected columns are dropped.`
+        : `All columns (*) are preserved in the final output projection.`,
+      concept: 'SELECT (projection) runs logically last — it chooses which attributes to output.',
       color: '#a855f7', icon: 'Sparkles'
     });
 
-    // WHERE states
+    // Compute WHERE states using SQLite rowid
     const rs: Record<string, 'normal'|'pass'|'fail'> = {};
+    const evals: Array<{ index: number; value: any; passed: boolean; expression: string }> = [];
+
     if (filterExpr) {
-      srcRows.forEach((row, i) => {
-        const key = String(row.id ?? row.name ?? i);
-        try {
-          const testQ = `SELECT * FROM ${tableName} WHERE ${filterExpr} AND (id=${row.id || i+1} OR name='${row.name || ''}')`;
-          const r = executeQuery(testQ);
-          rs[key] = r.rows.length > 0 ? 'pass' : 'fail';
-        } catch { rs[key] = 'fail'; }
-      });
+      try {
+        const testQuery = `SELECT rowid FROM "${tableName}" WHERE ${filterExpr};`;
+        const testRes = executeQuery(testQuery);
+        const passingRowIds = new Set<number>();
+        testRes.rows.forEach(r => {
+          if (r.rowid !== undefined) passingRowIds.add(Number(r.rowid));
+        });
+
+        srcRows.forEach((row, i) => {
+          const key = `row_${i}`;
+          const passed = passingRowIds.has(i + 1);
+          rs[key] = passed ? 'pass' : 'fail';
+          const val = filterCol ? row[filterCol] : undefined;
+          evals.push({
+            index: i,
+            value: val,
+            passed,
+            expression: filterCol ? `${filterCol} = ${val !== undefined ? JSON.stringify(val) : 'NULL'}` : filterExpr
+          });
+        });
+      } catch (err) {
+        console.warn('Filter query error:', err);
+        srcRows.forEach((row, i) => {
+          rs[`row_${i}`] = 'normal';
+        });
+      }
     }
+
     setRowStates(rs);
     setFilterExpr(filterExpr);
     setHighlightColumns(finalCols);
+    setStepMetadata({
+      filterColumn: filterCol,
+      sortColumn: orderByParsed ? orderByParsed.column : null,
+      sortDirection: orderByParsed ? orderByParsed.direction : null,
+      groupByColumn: groupByCol,
+      selectedColumns: selectedCols,
+      filterRowEvals: evals,
+    });
 
     if (groupByCol) {
       const groups: Record<string, TableRow[]> = {};
-      const validRows = filterExpr ? srcRows.filter(r => rs[String(r.id ?? r.name ?? '')] === 'pass') : srcRows;
+      const validRows = filterExpr ? srcRows.filter((_, i) => rs[`row_${i}`] === 'pass') : srcRows;
       validRows.forEach(r => {
         const key = String(r[groupByCol] ?? 'NULL');
         if (!groups[key]) groups[key] = [];
@@ -160,22 +234,33 @@ export function SQLEditor() {
     reader.onload = async (ev) => {
       try {
         const text = ev.target?.result as string;
-        const lines = text.trim().split(/\r?\n/);
-        const columns = lines[0].split(',').map(c => c.trim().replace(/"/g, '').replace(/[^a-zA-Z0-9_]/g, '_'));
-        const rows = lines.slice(1).map(line => {
-          const vals = line.split(',').map(v => v.trim().replace(/"/g, ''));
+        const rawLines = text.trim().split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (rawLines.length < 2) throw new Error('CSV must contain a header and at least one data row');
+
+        const rawColumns = parseCSVLine(rawLines[0]);
+        const columns = rawColumns.map((c, i) => {
+          const cleaned = c.replace(/^["']|["']$/g, '').replace(/[^a-zA-Z0-9_]/g, '_').trim();
+          return cleaned || `col_${i + 1}`;
+        });
+
+        const rows = rawLines.slice(1).map(line => {
+          const vals = parseCSVLine(line);
           const obj: any = {};
           columns.forEach((col, i) => {
-            const v = vals[i] ?? '';
-            obj[col] = isNaN(Number(v)) || v === '' ? v : Number(v);
+            const rawVal = vals[i] !== undefined ? vals[i].replace(/^["']|["']$/g, '').trim() : '';
+            const num = Number(rawVal);
+            obj[col] = !isNaN(num) && rawVal !== '' ? num : rawVal;
           });
           return obj;
         });
-        let tableName = file.name.replace('.csv', '').replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+
+        let tableName = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
         if (/^[0-9]/.test(tableName)) tableName = 't_' + tableName;
+        if (!tableName) tableName = 'custom_table';
         
         addTableToDb(tableName, columns, rows);
         addTable(tableName, rows);
+        setActiveTable(tableName);
         setQuery(`SELECT *\nFROM ${tableName};`);
       } catch (err: any) {
         setStatus('error', `CSV Error: ${err.message}`);

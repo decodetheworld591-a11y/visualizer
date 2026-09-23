@@ -20,17 +20,17 @@ export async function initDatabase(tables: Record<string, any[]>) {
       if (!rows || rows.length === 0) continue;
       const columns = Object.keys(rows[0]);
       const schema = columns.map(col => {
-        const v = rows[0][col];
-        return `${col} ${typeof v === 'number' ? 'REAL' : 'TEXT'}`;
+        const v = rows.find(r => r && r[col] !== undefined && r[col] !== null && r[col] !== '')?.[col];
+        return `"${col.replace(/"/g, '""')}" ${typeof v === 'number' ? 'REAL' : 'TEXT'}`;
       }).join(', ');
-      db!.run(`DROP TABLE IF EXISTS ${tableName};`);
-      db!.run(`CREATE TABLE ${tableName} (${schema});`);
+      db!.run(`DROP TABLE IF EXISTS "${tableName.replace(/"/g, '""')}";`);
+      db!.run(`CREATE TABLE "${tableName.replace(/"/g, '""')}" (${schema});`);
       for (const row of rows) {
         const vals = columns.map(col => {
           const v = row[col];
-          return typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : (v ?? 'NULL');
+          return typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : (v !== undefined && v !== null && v !== '' ? v : 'NULL');
         }).join(', ');
-        db!.run(`INSERT INTO ${tableName} VALUES (${vals});`);
+        db!.run(`INSERT INTO "${tableName.replace(/"/g, '""')}" VALUES (${vals});`);
       }
     }
     return true;
@@ -42,18 +42,18 @@ export async function initDatabase(tables: Record<string, any[]>) {
 
 export function addTableToDb(name: string, columns: string[], rows: any[]) {
   if (!db) throw new Error('DB not initialized');
-  const schema = columns.map((col, i) => {
-    const v = rows[0]?.[col];
-    return `${col} ${typeof v === 'number' ? 'REAL' : 'TEXT'}`;
+  const schema = columns.map((col) => {
+    const v = rows.find(r => r && r[col] !== undefined && r[col] !== null && r[col] !== '')?.[col];
+    return `"${col.replace(/"/g, '""')}" ${typeof v === 'number' ? 'REAL' : 'TEXT'}`;
   }).join(', ');
-  db.run(`DROP TABLE IF EXISTS ${name};`);
-  db.run(`CREATE TABLE ${name} (${schema});`);
+  db.run(`DROP TABLE IF EXISTS "${name.replace(/"/g, '""')}";`);
+  db.run(`CREATE TABLE "${name.replace(/"/g, '""')}" (${schema});`);
   for (const row of rows) {
     const vals = columns.map(col => {
       const v = row[col];
-      return typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : (v ?? 'NULL');
+      return typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : (v !== undefined && v !== null && v !== '' ? v : 'NULL');
     }).join(', ');
-    db.run(`INSERT INTO ${name} VALUES (${vals});`);
+    db.run(`INSERT INTO "${name.replace(/"/g, '""')}" VALUES (${vals});`);
   }
 }
 

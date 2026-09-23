@@ -37,6 +37,12 @@ interface SQLState {
   rowStates: Record<string, 'normal' | 'pass' | 'fail'>;
   highlightColumns: string[];
   filterExpr: string | null;
+  filterColumn: string | null;
+  sortColumn: string | null;
+  sortDirection: 'ASC' | 'DESC' | null;
+  groupByColumn: string | null;
+  selectedColumns: string[];
+  filterRowEvals: Array<{ index: number; value: any; passed: boolean; expression: string }>;
   sortedRows: TableRow[] | null;
   groupData: Record<string, TableRow[]> | null;
 
@@ -58,6 +64,14 @@ interface SQLState {
   setRowStates: (rs: Record<string, 'normal' | 'pass' | 'fail'>) => void;
   setHighlightColumns: (cols: string[]) => void;
   setFilterExpr: (expr: string | null) => void;
+  setStepMetadata: (meta: {
+    filterColumn?: string | null;
+    sortColumn?: string | null;
+    sortDirection?: 'ASC' | 'DESC' | null;
+    groupByColumn?: string | null;
+    selectedColumns?: string[];
+    filterRowEvals?: Array<{ index: number; value: any; passed: boolean; expression: string }>;
+  }) => void;
   setSortedRows: (rows: TableRow[] | null) => void;
   setGroupData: (data: Record<string, TableRow[]> | null) => void;
   addTable: (name: string, rows: TableRow[]) => void;
@@ -103,6 +117,12 @@ export const useSQLStore = create<SQLState>((set, get) => ({
   rowStates: {},
   highlightColumns: [],
   filterExpr: null,
+  filterColumn: null,
+  sortColumn: null,
+  sortDirection: null,
+  groupByColumn: null,
+  selectedColumns: [],
+  filterRowEvals: [],
   sortedRows: null,
   groupData: null,
   isLightMode: false,
@@ -126,12 +146,22 @@ export const useSQLStore = create<SQLState>((set, get) => ({
   setRowStates: (rs) => set({ rowStates: rs }),
   setHighlightColumns: (cols) => set({ highlightColumns: cols }),
   setFilterExpr: (expr) => set({ filterExpr: expr }),
+  setStepMetadata: (meta) => set((s) => ({
+    filterColumn: meta.filterColumn !== undefined ? meta.filterColumn : s.filterColumn,
+    sortColumn: meta.sortColumn !== undefined ? meta.sortColumn : s.sortColumn,
+    sortDirection: meta.sortDirection !== undefined ? meta.sortDirection : s.sortDirection,
+    groupByColumn: meta.groupByColumn !== undefined ? meta.groupByColumn : s.groupByColumn,
+    selectedColumns: meta.selectedColumns !== undefined ? meta.selectedColumns : s.selectedColumns,
+    filterRowEvals: meta.filterRowEvals !== undefined ? meta.filterRowEvals : s.filterRowEvals,
+  })),
   setSortedRows: (rows) => set({ sortedRows: rows }),
   setGroupData: (data) => set({ groupData: data }),
   addTable: (name, rows) => set(s => ({ tables: { ...s.tables, [name]: rows }, activeTable: name })),
   reset: () => set({
     status: 'idle', errorMessage: null, result: null, resultColumns: [],
     steps: [], currentStep: 0, rowStates: {}, highlightColumns: [],
-    filterExpr: null, sortedRows: null, groupData: null,
+    filterExpr: null, filterColumn: null, sortColumn: null, sortDirection: null,
+    groupByColumn: null, selectedColumns: [], filterRowEvals: [],
+    sortedRows: null, groupData: null,
   }),
 }));
